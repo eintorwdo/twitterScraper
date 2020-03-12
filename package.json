@@ -1,0 +1,15 @@
+{
+  "name": "twitterscraper",
+  "version": "1.0.0",
+  "description": "twitterScraper",
+  "main": "scraper.js",
+  "scripts": {
+    "test": "nodemon scraper.js -l 10 -n CNN"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^0.19.2",
+    "cheerio": "^1.0.0-rc.3"
+  }
+}
