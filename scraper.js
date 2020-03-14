@@ -29,20 +29,19 @@ for(let i=0;i<args.length;i++){
 function parseBatch($, num){
     if($('body').has('.timeline').length){
         $('.timeline .tweet').each((i, el) => {
-            // let tempArr = [];
-            let tweetHtml = $.html(el);
-            let test = tweetHtml.search(/<span class="context">[^]* retweeted<\/span>/);
-            if(test === -1){
-                let $$ = cheerio.load(tweetHtml);
-                let tweetCore = $$('.dir-ltr');
-                let coreHtml = $$.html(tweetCore);
-                let tweetID = bigInt($$('.tweet-text').attr('data-id'));
-                tweetID = tweetID.shiftRight(22);
-                let offset = 1288834974657;
-                let tstamp = tweetID.add(offset);
-                let date = new Date(parseInt(tstamp.toString()));
-                let localDate = convertUTCDateToLocalDate(date);
-                if(counter < num){
+            if(counter < num){
+                let tweetHtml = $.html(el);
+                let test = tweetHtml.search(/<span class="context">[^]* retweeted<\/span>/);
+                if(test === -1){
+                    let $$ = cheerio.load(tweetHtml);
+                    let tweetCore = $$('.dir-ltr');
+                    let coreHtml = $$.html(tweetCore);
+                    let tweetID = bigInt($$('.tweet-text').attr('data-id'));
+                    tweetID = tweetID.shiftRight(22);
+                    let offset = 1288834974657;
+                    let tstamp = tweetID.add(offset);
+                    let date = new Date(parseInt(tstamp.toString()));
+                    let localDate = convertUTCDateToLocalDate(date);
                     let text = $$(`${coreHtml}`).not('a').text();
                     text = text.replace(/\n/g, ' ');
                     text = text.replace(/\\/, '');
@@ -72,7 +71,7 @@ function scrape(url, num){
                 let moreTweetsURL = morePath ? `https://mobile.twitter.com${morePath}` : undefined;
                 console.log(moreTweetsURL);
                 resolve(moreTweetsURL);
-            }, 2000);
+            }, 1000);
         } catch (error) {
             reject(error)
         }
