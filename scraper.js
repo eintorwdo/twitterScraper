@@ -1,6 +1,7 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 const fs = require('fs');
+const bigInt = require("big-integer");
 
 const args = process.argv.slice(2);
 
@@ -35,12 +36,22 @@ function parseBatch($, num){
                 let $$ = cheerio.load(tweetHtml);
                 let tweetCore = $$('.dir-ltr');
                 let coreHtml = $$.html(tweetCore);
+                let tweetID = bigInt($$('.tweet-text').attr('data-id'));
+                tweetID = tweetID.shiftRight(22);
+                let offset = 1288834974657;
+                let tstamp = tweetID.add(offset);
+                let date = new Date(parseInt(tstamp.toString()));
+                let localDate = convertUTCDateToLocalDate(date);
                 if(counter < num){
                     let text = $$(`${coreHtml}`).not('a').text();
                     text = text.replace(/\n/g, ' ');
                     text = text.replace(/\\/, '');
                     text = text.replace(/"/g, "'");
-                    tweetArr.push(text.trim());
+                    let tweetObj = {
+                        text: text.trim(),
+                        date: localDate.toString()
+                    }
+                    tweetArr.push(tweetObj);
                     counter++;
                     console.log(`Tweets parsed: ${counter}/${num}`);
                 }
@@ -91,6 +102,17 @@ async function getTweets(number = 10, name = "CNN"){
         fs.writeFileSync(filename, JSON.stringify([tweets[0], res]));
         console.log(tweets[0]);
     }
+}
+
+function convertUTCDateToLocalDate(date) {
+    let newDate = new Date(date.getTime()+date.getTimezoneOffset()*60*1000);
+
+    let offset = date.getTimezoneOffset() / 60;
+    let hours = date.getHours();
+
+    newDate.setHours(hours - offset);
+
+    return newDate;   
 }
 
 getTweets(numOfTweets, accName)
