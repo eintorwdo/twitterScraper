@@ -2,11 +2,12 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const fs = require('fs');
 const bigInt = require("big-integer");
+const { Map, OrderedSet } = require('immutable');
 
 const args = process.argv.slice(2);
 
 let accName, numOfTweets, counter, append, filename;
-let tweetArr = [];
+let tweetArr = OrderedSet();
 counter = 0;
 append = false;
 filename = "./tweets.json"
@@ -37,21 +38,25 @@ function parseBatch($, num){
                     let tweetCore = $$('.dir-ltr');
                     let coreHtml = $$.html(tweetCore);
                     let tweetID = bigInt($$('.tweet-text').attr('data-id'));
-                    tweetID = tweetID.shiftRight(22);
+                    let IDShifted = tweetID.shiftRight(22);
                     let offset = 1288834974657;
-                    let tstamp = tweetID.add(offset);
+                    let tstamp = IDShifted.add(offset);
                     let date = new Date(parseInt(tstamp.toString()));
-                    let localDate = convertUTCDateToLocalDate(date);
                     let text = $$(`${coreHtml}`).not('a').text();
                     text = text.replace(/\n/g, ' ');
                     text = text.replace(/\\/, '');
                     text = text.replace(/"/g, "'");
                     let tweetObj = {
                         text: text.trim(),
-                        date: localDate.toString()
+                        date: date.toString(),
+                        id: tweetID.toString().trim()
                     }
-                    tweetArr.push(tweetObj);
-                    counter++;
+                    const tweetMap = Map(tweetObj);
+                    let sizeBefore = tweetArr.size;
+                    tweetArr = tweetArr.add(tweetMap);
+                    if(tweetArr.size > sizeBefore){
+                        counter++;
+                    }
                     console.log(`Tweets parsed: ${counter}/${num}`);
                 }
             }
@@ -84,7 +89,12 @@ async function getTweets(number = 10, name = "CNN"){
     if(append){
         let tw = fs.readFileSync(filename);
         tweets = JSON.parse(tw);
-        url = tweets[1];
+        let lastTweetID = tweets[0][tweets[0].length - 1].id;
+        url = `https://mobile.twitter.com/${name}?max_id=${lastTweetID}`;
+        for(tweet of tweets[0]){
+            const map = Map(tweet);
+            tweetArr = tweetArr.add(map);
+        }
     }
     while(counter < number){
         var res = await scrape(url, number);
@@ -92,26 +102,7 @@ async function getTweets(number = 10, name = "CNN"){
             url = res;
         }
     }
-    if(!append){
-        fs.writeFileSync(filename, JSON.stringify([tweetArr, res]));
-        console.log(tweetArr)
-    }
-    else{
-        tweets[0].push(...tweetArr);
-        fs.writeFileSync(filename, JSON.stringify([tweets[0], res]));
-        console.log(tweets[0]);
-    }
-}
-
-function convertUTCDateToLocalDate(date) {
-    let newDate = new Date(date.getTime()+date.getTimezoneOffset()*60*1000);
-
-    let offset = date.getTimezoneOffset() / 60;
-    let hours = date.getHours();
-
-    newDate.setHours(hours - offset);
-
-    return newDate;   
+    fs.writeFileSync(filename, JSON.stringify([[...tweetArr], name]));
 }
 
 getTweets(numOfTweets, accName)
