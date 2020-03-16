@@ -74,7 +74,6 @@ function scrape(url, num){
                 parseBatch($, num);
                 let morePath = $('.w-button-more a').attr('href');
                 let moreTweetsURL = morePath ? `https://mobile.twitter.com${morePath}` : undefined;
-                console.log(moreTweetsURL);
                 resolve(moreTweetsURL);
             }, 1000);
         } catch (error) {
@@ -96,10 +95,22 @@ async function getTweets(number = 10, name = "CNN"){
             tweetArr = tweetArr.add(map);
         }
     }
+    let noTweetsCounter = 0;
     while(counter < number){
-        var res = await scrape(url, number);
-        if(res){
-            url = res;
+        if(noTweetsCounter <= 4){
+            var res = await scrape(url, number);
+            if(res){
+                url = res;
+                noTweetsCounter = 0;
+            }
+            else{
+                noTweetsCounter++;
+            }
+            console.log(url);
+        }
+        else{
+            console.log('No more tweets found');
+            break;
         }
     }
     fs.writeFileSync(filename, JSON.stringify([[...tweetArr], name]));
