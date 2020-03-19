@@ -12,6 +12,7 @@
     "axios": "^0.19.2",
     "big-integer": "^1.6.48",
     "cheerio": "^1.0.0-rc.3",
-    "immutable": "^4.0.0-rc.12"
+    "immutable": "^4.0.0-rc.12",
+    "puppeteer": "^2.1.1"
   }
 }
