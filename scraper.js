@@ -20,38 +20,53 @@ for(let i=0;i<args.length;i++){
     }
 }
 
+function idToDate(id){
+    let tweetID = bigInt(id);
+    let IDShifted = tweetID.shiftRight(22);
+    let offset = 1288834974657;
+    let tstamp = IDShifted.add(offset);
+    let date = new Date(parseInt(tstamp.toString()));
+    return date
+}
+
 function downloadBody(){
     const data = document.querySelector('main');
     return data.outerHTML;
 }
 
-function extractItems(body, num){
-    let items = [];
+function extractItems(body, num, name){
+    let items = OrderedSet();
     const $ = cheerio.load(body);
-    $('article[aria-haspopup="false"][role="article"]').each((i, el) => {
-        if(items.length < num){
-            let tweetHtml = $.html(el);
-            if(tweetHtml.search(/role="blockquote"/) == -1 && tweetHtml.search(/<svg viewBox="0 0 0 24" aria-label/) == -1){
-                let $$ = cheerio.load(tweetHtml);
-                // let text = $$(`${tweetHtml}`).text();
-                let text = $$('div[lang][dir="auto"]').text();
-                console.log(text);
-                console.log('------------')
-                items.push(text);
+    $('article[aria-haspopup="false"][role="article"]').each(async (i, el) => {
+        let tweetHtml = $.html(el);
+        if(tweetHtml.search(/role="blockquote"/) == -1 && tweetHtml.search(/<svg viewBox="0 0 0 24" aria-label/) == -1){
+            let $$ = cheerio.load(tweetHtml);
+            let text = $$('div[lang][dir="auto"]').text();
+            let href = $$(`a[title][href^="/${name}/status/"]`).attr('href');
+            if(href && text.length > 0){
+                href = href.split('/');
+                let date = idToDate(href[3]);
+                let dateString = date.toISOString();
+                let tweetObj = {text: text, date: dateString, id: href[3]};
+                const tweetMap = Map(tweetObj);
+                items = items.add(tweetMap);
             }
         }
     });
+    // console.log(items.size)
     return items;
 }
 
-async function infiniteScroll(page, num){
-    let items = [];
+async function infiniteScroll(page, num, name){
+    let items = OrderedSet();
     let body;
     try{
         let previousHeight;
-        while (items.length < num) {
+        while (items.size < num) {
             body = await page.evaluate(downloadBody);
-            items = await extractItems(body, num);
+            let itemsArr = await extractItems(body, num, name);
+            items = items.union(itemsArr);
+            console.log(items.size)
             previousHeight = await page.evaluate('document.body.scrollHeight');
             await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
             await page.waitForFunction(`document.body.scrollHeight > ${previousHeight}`);
@@ -59,45 +74,12 @@ async function infiniteScroll(page, num){
         }
         return items;
     }
-    catch(e){}
-    
-    // if($('body').has('.timeline').length){
-    //     $('.timeline .tweet').each((i, el) => {
-    //         if(counter < num){
-    //             let tweetHtml = $.html(el);
-    //             let test = tweetHtml.search(/<span class="context">[^]* retweeted<\/span>/);
-    //             if(test === -1){
-    //                 let $$ = cheerio.load(tweetHtml);
-    //                 let tweetCore = $$('.dir-ltr');
-    //                 let coreHtml = $$.html(tweetCore);
-    //                 let tweetID = bigInt($$('.tweet-text').attr('data-id'));
-    //                 let IDShifted = tweetID.shiftRight(22);
-    //                 let offset = 1288834974657;
-    //                 let tstamp = IDShifted.add(offset);
-    //                 let date = new Date(parseInt(tstamp.toString()));
-    //                 let text = $$(`${coreHtml}`).not('a').text();
-    //                 text = text.replace(/\n/g, ' ');
-    //                 text = text.replace(/\\/, '');
-    //                 text = text.replace(/"/g, "'");
-    //                 let tweetObj = {
-    //                     text: text.trim(),
-    //                     date: date.toString(),
-    //                     id: tweetID.toString().trim()
-    //                 }
-    //                 const tweetMap = Map(tweetObj);
-    //                 let sizeBefore = tweetArr.size;
-    //                 tweetArr = tweetArr.add(tweetMap);
-    //                 if(tweetArr.size > sizeBefore){
-    //                     counter++;
-    //                 }
-    //                 console.log(`Tweets parsed: ${counter}/${num}`);
-    //             }
-    //         }
-    //     });
-    // }
+    catch(e){
+        console.log(e);
+    }
 }
 
-function scrape(url, num){
+function scrape(url, num, name){
     return new Promise(async (resolve, reject) => {
         try {
             const browser = await puppeteer.launch({headless: true});
@@ -106,7 +88,7 @@ function scrape(url, num){
             await page.goto(url);
             await page.waitFor('main');
             await page.waitFor(3000);
-            let data = await infiniteScroll(page, num);
+            let data = await infiniteScroll(page, num, name);
             browser.close();
             resolve(data);
         } catch (error) {
@@ -117,8 +99,8 @@ function scrape(url, num){
 
 async function getTweets(number = 10, name = "CNN"){
     let url = `https://twitter.com/search?q=from%3A${name}&src=typed_query&f=live`;
-    let data = [];
-    data = await scrape(url, number);
+    let data;
+    data = await scrape(url, number, name);
     fs.writeFileSync(filename, JSON.stringify([data, name]));
 }
 
