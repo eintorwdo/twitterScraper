@@ -6,8 +6,8 @@ const puppeteer = require('puppeteer');
 
 const args = process.argv.slice(2);
 
-let accName, numOfTweets, counter, append, filename;
-let tweetArr = OrderedSet();
+let accName, numOfTweets, counter, tweets, filename;
+// let tweetArr = OrderedSet();
 counter = 0;
 filename = "./tweets.json"
 
@@ -73,7 +73,6 @@ function extractItems(body, num, name){
 async function infiniteScroll(page, num, name){
     let items = OrderedSet();
     let body;
-    let limit = false;
     try{
         let previousHeight;
         while (items.size < num) {
@@ -86,12 +85,12 @@ async function infiniteScroll(page, num, name){
             await page.waitForFunction(`document.body.scrollHeight > ${previousHeight}`, {timeout: 3000});
             await page.waitFor(1000);
         }
-        return [items, limit];
+        return items
     }
     catch(e){
         if(e.name == 'TimeoutError'){
-            limit = true;
-            return [items, limit];
+            console.log('Timeout or limit experienced. The browser will restart and continue scraping');
+            return items;
         }
     }
 }
@@ -100,13 +99,14 @@ function scrape(url, num, name){
     return new Promise(async (resolve, reject) => {
         try {
             const browser = await puppeteer.launch({headless: false});
-            const page = await browser.newPage();
+            const context = await browser.createIncognitoBrowserContext();
+            const page = await context.newPage();
             page.setViewport({ width: 1280, height: 926 });
             await page.goto(url);
             await page.waitFor('main');
             await page.waitFor(3000);
             let data = await infiniteScroll(page, num, name);
-            // browser.close();
+            browser.close();
             resolve(data);
         } catch (error) {
             reject(error)
@@ -115,12 +115,31 @@ function scrape(url, num, name){
 }
 
 async function getTweets(number = 10, name = "CNN"){
-    let date = new Date();
-    // let dateString = `${date.getFullYear()}-${('0'+(date.getMonth()+1)).slice(-2)}-${('0'+date.getDate()).slice(-2)}`;
-    let url = `https://twitter.com/search?q=from%3A${name}&src=typed_query&f=live`;
+    let dateString = '';
+    let url = `https://twitter.com/search?q=from%3A${name}${dateString}&src=typed_query&f=live`;
     let data;
     data = await scrape(url, number, name);
-    fs.writeFileSync(filename, JSON.stringify([data[0], name]));
+    while(data.size < number){
+        let remainingTweets = number - data.size;
+        let dataArray = data.toArray();
+        let lastTweet = dataArray[dataArray.length - 1].toJS();
+        let date = new Date(lastTweet.date);
+        date.setDate(date.getDate()+1); // set next day to not miss any tweets
+        let year = date.getFullYear();
+        let month = date.getMonth();
+        let day = date.getDate();
+        dateString = `${year}-${('0'+(month+1)).slice(-2)}-${('0'+day).slice(-2)}`;
+        dateString = `%20until%3A${dateString}`;
+        url = `https://twitter.com/search?q=from%3A${name}${dateString}&src=typed_query&f=live`;
+        let newData = await scrape(url, remainingTweets, name);
+        data = data.union(newData);
+    }
+    data = data.toArray();
+    let numToDelete = data.length - number;
+    for(let i=0;i<numToDelete;i++){
+        data.pop();
+    }
+    fs.writeFileSync(filename, JSON.stringify([data, name]));
 }
 
 getTweets(numOfTweets, accName)
