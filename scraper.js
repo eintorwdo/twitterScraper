@@ -98,7 +98,7 @@ async function infiniteScroll(page, num, name){
 function scrape(url, num, name){
     return new Promise(async (resolve, reject) => {
         try {
-            const browser = await puppeteer.launch({headless: false});
+            const browser = await puppeteer.launch({headless: true});
             const context = await browser.createIncognitoBrowserContext();
             const page = await context.newPage();
             page.setViewport({ width: 1280, height: 926 });
