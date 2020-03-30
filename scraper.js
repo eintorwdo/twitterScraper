@@ -13,10 +13,17 @@ filename = "./tweets.json";
 
 for(let i=0;i<args.length;i++){
     if(args[i] === "-l"){
-        numOfTweets = parseInt(args[i+1]);
+        if(args[i+1] > 0){
+            numOfTweets = parseInt(args[i+1]);
+        }
     }
     if(args[i] === "-n"){
-        accName = args[i+1];
+        if(args[i+1].length > 0){
+            accName = args[i+1];
+        }
+    }
+    if(args[i] === "-r"){
+        noReplies = false;
     }
 }
 
@@ -65,7 +72,7 @@ async function infiniteScroll(page, num, name){
             body = await page.evaluate(downloadBody);
             let itemsArr = await extractItems(body, name);
             items = items.union(itemsArr);
-            console.log(`$Got ${items.size} of ${num} remaining tweets`);
+            console.log(`Got ${items.size} of ${num} remaining tweets`);
             previousHeight = await page.evaluate('document.body.scrollHeight');
             await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
             await page.waitForFunction(`document.body.scrollHeight > ${previousHeight}`, {timeout: 3000});
