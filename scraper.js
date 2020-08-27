@@ -33,11 +33,10 @@ for(let i=0;i<args.length;i++){
 }
 
 function arrayToSet(arr){
-    let data = arr.map((obj) => {
+    const data = arr.map((obj) => {
         return Map(obj);
     });
-    data = OrderedSet(data);
-    return data;
+    return OrderedSet(data);
 }
 
 function dateToString(date){
@@ -65,17 +64,17 @@ function downloadBody(){
 function extractItems(body, name){
     let items = OrderedSet();
     const $ = cheerio.load(body);
-    $('article[aria-haspopup="false"][role="article"]').each(async (i, el) => {
+    $('article[role="article"]').each((i, el) => {
         let tweetHtml = $.html(el);
         if(tweetHtml.search(/role="blockquote"/) == -1){    //not a quote
-            let $$ = cheerio.load(tweetHtml);
-            let text = $$('div[lang][dir="auto"]').text();
+            const $$ = cheerio.load(tweetHtml);
+            const text = $$('div[lang][dir="auto"]').text();
             let href = $$(`a[title][href^="/${name}/status/"]`).attr('href');
             if(href && text.length > 0){
                 href = href.split('/');
-                let date = idToDate(href[3]);
-                let dateString = date.toISOString();
-                let tweetObj = {text: text, date: dateString, id: href[3]};
+                const date = idToDate(href[3]);
+                const dateString = date.toISOString();
+                const tweetObj = {text, date: dateString, id: href[3]};
                 const tweetMap = Map(tweetObj);
                 items = items.add(tweetMap);
             }
@@ -87,12 +86,12 @@ function extractItems(body, name){
 async function infiniteScroll(page, num, name){
     let items = OrderedSet();
     let body;
+    let previousHeight;
     try{
-        let previousHeight;
         while (items.size < num) {
             body = await page.evaluate(downloadBody);
-            let itemsArr = await extractItems(body, name);
-            items = items.union(itemsArr);
+            let newItems = extractItems(body, name);
+            items = items.union(newItems);
             console.log(`Got ${items.size} of ${num} remaining tweets`);
             previousHeight = await page.evaluate('document.body.scrollHeight');
             await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
@@ -139,49 +138,27 @@ function scrape(url, num, name){
 }
 
 async function getTweets(number = 10, name = "CNN"){
-    let totalNum = number;
-    let data;
-    let fileContent = OrderedSet();
+    let data = OrderedSet();
     let dateString = '';
     let noRepliesString = '%20-filter%3Areplies';
     let noRetweetsString = '%20-filter%3Anativeretweets';
-    if(fs.existsSync(filename)){
-        let jsonData = fs.readFileSync(filename);
-        fileContent = JSON.parse(jsonData);
-        fileContent = fileContent[0];
-        let lastTweet = fileContent[fileContent.length - 1];
-        let date = new Date(lastTweet.date);
-        date.setDate(date.getDate()+1);
-        dateString = `%20until%3A${dateToString(date)}`;
-        fileContent = arrayToSet(fileContent);
-    }
-    let url = `https://twitter.com/search?q=from%3A${name}${dateString}${noRetweetsString}&src=typed_query&f=live`;
-    if(noReplies){
-        url = `https://twitter.com/search?q=from%3A${name}${dateString}${noRepliesString}${noRetweetsString}&src=typed_query&f=live`;
-    }
-    number = number - fileContent.size > 0 ? number - fileContent.size : 0;
     if(number > 0){
-        data = await scrape(url, number, name);
         let remainingTweets = number - data.size;
         let limitCounter = 0;
-        while(data.size < number){
-            let dataArray = data.toArray();
-            let lastTweet = dataArray[dataArray.length - 1].toJS();
-            let date = new Date(lastTweet.date);
-            date.setDate(date.getDate()+1); // set the next day to not miss any tweets
-            // let year = date.getFullYear();
-            // let month = date.getMonth();
-            // let day = date.getDate();
-            // dateString = `${year}-${('0'+(month+1)).slice(-2)}-${('0'+day).slice(-2)}`;
-            dateString = dateToString(date);
-            dateString = `%20until%3A${dateString}`;
-            url = `https://twitter.com/search?q=from%3A${name}${dateString}${noRetweetsString}&src=typed_query&f=live`;
+        do{
+            let url = `https://twitter.com/search?q=from%3A${name}${dateString}${noRetweetsString}&src=typed_query&f=live`;
             if(noReplies){
                 url = `https://twitter.com/search?q=from%3A${name}${dateString}${noRepliesString}${noRetweetsString}&src=typed_query&f=live`;
             }
             let newData = await scrape(url, remainingTweets, name);
             let sizeBefore = data.size;
             data = data.union(newData);
+            let dataArray = data.toArray();
+            let lastTweet = dataArray[dataArray.length - 1].toJS();
+            let date = new Date(lastTweet.date);
+            date.setDate(date.getDate()+1); // set the next day to not miss any tweets
+            dateString = dateToString(date);
+            dateString = `%20until%3A${dateString}`;
             let sizeAfter = data.size;
             remainingTweets = number - data.size;
             if(sizeBefore == sizeAfter){
@@ -195,21 +172,20 @@ async function getTweets(number = 10, name = "CNN"){
                 console.log('Could not find more tweets, saving...');
                 break;
             }
-        }
+        } while(data.size < number);
         let numOfScraped = data.size;
-        fileContent = fileContent.union(data);
-        fileContent = fileContent.toArray();
-        let numToDelete = fileContent.length - totalNum;
+        data = data.toArray();
+        let numToDelete = data.length - number;
         if(numToDelete > 0){
             for(let i=0;i<numToDelete;i++){
-                fileContent.pop();
+                data.pop();
             }
         }
         console.log(`Tweets scraped: ${numOfScraped}`);
-        console.log(`Total tweets: ${fileContent.length}`);
+        console.log(`Total tweets: ${data.length}`);
         console.log('Saving...');
-        fs.writeFileSync(filename, JSON.stringify([fileContent, name]));
+        fs.writeFileSync(filename, JSON.stringify([data, name]));
     }
 }
 
-getTweets(numOfTweets, accName)
+getTweets(numOfTweets, accName);
