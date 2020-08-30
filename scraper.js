@@ -1,8 +1,8 @@
 const cheerio = require('cheerio');
 const fs = require('fs');
-const bigInt = require("big-integer");
 const { Map, OrderedSet } = require('immutable');
 const puppeteer = require('puppeteer');
+const {dateToString, idToDate} = require('./utils/utils.js');
 
 const args = process.argv.slice(2);
 
@@ -30,35 +30,6 @@ for(let i=0;i<args.length;i++){
            filename = `./${args[i+1]}.json`
         }
     }
-}
-
-function arrayToSet(arr){
-    const data = arr.map((obj) => {
-        return Map(obj);
-    });
-    return OrderedSet(data);
-}
-
-function dateToString(date){
-    let year = date.getFullYear();
-    let month = date.getMonth();
-    let day = date.getDate();
-    dateString = `${year}-${('0'+(month+1)).slice(-2)}-${('0'+day).slice(-2)}`;
-    return dateString;
-}
-
-function idToDate(id){
-    let tweetID = bigInt(id);
-    let IDShifted = tweetID.shiftRight(22);
-    let offset = 1288834974657;
-    let tstamp = IDShifted.add(offset);
-    let date = new Date(parseInt(tstamp.toString()));
-    return date
-}
-
-function downloadBody(){
-    const data = document.querySelector('main');
-    return data.outerHTML;
 }
 
 function extractItems(body, name){
@@ -89,7 +60,7 @@ async function infiniteScroll(page, num, name){
     let previousHeight;
     try{
         while (items.size < num) {
-            body = await page.evaluate(downloadBody);
+            body = await page.evaluate(() => document.querySelector('main').outerHTML);
             let newItems = extractItems(body, name);
             items = items.union(newItems);
             console.log(`Got ${items.size} of ${num} remaining tweets`);
@@ -110,8 +81,9 @@ async function infiniteScroll(page, num, name){
 
 function scrape(url, num, name){
     return new Promise(async (resolve, reject) => {
+        let browser;
         try {
-            const browser = await puppeteer.launch({headless: true});
+            browser = await puppeteer.launch({headless: true});
             const context = await browser.createIncognitoBrowserContext();
             const page = await context.newPage();
             page.setViewport({ width: 1280, height: 926 });
@@ -123,12 +95,11 @@ function scrape(url, num, name){
             resolve(data);
         } catch (e) {
             if(e.name == 'TimeoutError'){
-                console.log('Timeout or limit experienced. The browser will restart and continue scraping');
+                console.log('Page did not load, the browser will try to restart');
                 if(browser){
                     browser.close();
                 }
-                let emptySet = OrderedSet();
-                resolve(emptySet);
+                resolve(OrderedSet());
             }
             else{
                 reject(e);
@@ -137,7 +108,7 @@ function scrape(url, num, name){
     });
 }
 
-async function getTweets(number = 10, name = "CNN"){
+(async function getTweets(number = 10, name = "CNN"){
     let data = OrderedSet();
     let dateString = '';
     let noRepliesString = '%20-filter%3Areplies';
@@ -157,11 +128,10 @@ async function getTweets(number = 10, name = "CNN"){
             let lastTweet = dataArray[dataArray.length - 1].toJS();
             let date = new Date(lastTweet.date);
             date.setDate(date.getDate()+1); // set the next day to not miss any tweets
-            dateString = dateToString(date);
-            dateString = `%20until%3A${dateString}`;
+            dateString = `%20until%3A${dateToString(date)}`;
             let sizeAfter = data.size;
             remainingTweets = number - data.size;
-            if(sizeBefore == sizeAfter){
+            if(sizeBefore === sizeAfter){
                 remainingTweets += 200; //to avoid looping over the same tweets
                 limitCounter++;
             }
@@ -186,6 +156,4 @@ async function getTweets(number = 10, name = "CNN"){
         console.log('Saving...');
         fs.writeFileSync(filename, JSON.stringify([data, name]));
     }
-}
-
-getTweets(numOfTweets, accName);
+})(numOfTweets, accName);
