@@ -2,11 +2,11 @@ const cheerio = require('cheerio');
 const fs = require('fs');
 const { Map, OrderedSet } = require('immutable');
 const puppeteer = require('puppeteer');
-const {dateToString, idToDate} = require('./utils/utils.js');
+const {dateToString, idToDate, generateSearchUrl} = require('./utils/utils.js');
 
 const args = process.argv.slice(2);
 
-let accName, numOfTweets, counter, filename, noReplies;
+let accName, numOfTweets, filename, noReplies;
 noReplies = true;
 counter = 0;
 filename = "./tweets.json";
@@ -67,7 +67,7 @@ async function infiniteScroll(page, num, name){
             previousHeight = await page.evaluate('document.body.scrollHeight');
             await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
             await page.waitForFunction(`document.body.scrollHeight > ${previousHeight}`, {timeout: 3000});
-            await page.waitFor(1000);
+            await page.waitFor(500);
         }
         return items;
     }
@@ -83,13 +83,18 @@ function scrape(url, num, name){
     return new Promise(async (resolve, reject) => {
         let browser;
         try {
-            browser = await puppeteer.launch({headless: true});
+            browser = await puppeteer.launch({headless: false});
             const context = await browser.createIncognitoBrowserContext();
             const page = await context.newPage();
             page.setViewport({ width: 1280, height: 926 });
+            await page.setRequestInterception(true);
+            page.on('request', (request) => {
+                if (request.resourceType() === 'image' || request.resourceType() === 'media') request.abort();  //do not load imgs or vids
+                else request.continue();
+            });
             await page.goto(url);
             await page.waitFor('main', {timeout: 7000});
-            await page.waitFor(3000);
+            await page.waitFor(2000);
             let data = await infiniteScroll(page, num, name);
             browser.close();
             resolve(data);
@@ -109,29 +114,29 @@ function scrape(url, num, name){
 }
 
 (async function getTweets(number = 10, name = "CNN"){
+    let url, newData, sizeBefore, lastTweet, lastTweetDate;
     let data = OrderedSet();
     let dateString = '';
     let noRepliesString = '%20-filter%3Areplies';
-    let noRetweetsString = '%20-filter%3Anativeretweets';
+    let remainingTweets = number;
+    let limitCounter = 0;
     if(number > 0){
-        let remainingTweets = number - data.size;
-        let limitCounter = 0;
         do{
-            let url = `https://twitter.com/search?q=from%3A${name}${dateString}${noRetweetsString}&src=typed_query&f=live`;
             if(noReplies){
-                url = `https://twitter.com/search?q=from%3A${name}${dateString}${noRepliesString}${noRetweetsString}&src=typed_query&f=live`;
+                url = generateSearchUrl(name, dateString, noRepliesString);
             }
-            let newData = await scrape(url, remainingTweets, name);
-            let sizeBefore = data.size;
+            else{
+                url = generateSearchUrl(name, dateString);
+            }
+            newData = await scrape(url, remainingTweets, name);
+            sizeBefore = data.size;
             data = data.union(newData);
-            let dataArray = data.toArray();
-            let lastTweet = dataArray[dataArray.length - 1].toJS();
-            let date = new Date(lastTweet.date);
-            date.setDate(date.getDate()+1); // set the next day to not miss any tweets
-            dateString = `%20until%3A${dateToString(date)}`;
-            let sizeAfter = data.size;
+            lastTweet = data.last().toJS();
+            lastTweetDate = new Date(lastTweet.date);
+            lastTweetDate.setDate(lastTweetDate.getDate()+1); // set the next day to not miss any tweets
+            dateString = `%20until%3A${dateToString(lastTweetDate)}`;
             remainingTweets = number - data.size;
-            if(sizeBefore === sizeAfter){
+            if(sizeBefore === data.size){
                 remainingTweets += 200; //to avoid looping over the same tweets
                 limitCounter++;
             }
