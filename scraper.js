@@ -40,7 +40,7 @@ function extractItems(body, name){
         if(tweetHtml.search(/role="blockquote"/) == -1){    //not a quote
             const $$ = cheerio.load(tweetHtml);
             const text = $$('div[lang][dir="auto"]').text();
-            let href = $$(`a[title][href^="/${name}/status/"]`).attr('href');
+            let href = $$(`a[href^="/${name}/status/"]`).attr('href');
             if(href && text.length > 0){
                 href = href.split('/');
                 const date = idToDate(href[3]);
@@ -61,13 +61,13 @@ async function infiniteScroll(page, num, name){
     try{
         while (items.size < num) {
             body = await page.evaluate(() => document.querySelector('main').outerHTML);
-            let newItems = extractItems(body, name);
+            const newItems = extractItems(body, name);
             items = items.union(newItems);
             console.log(`Got ${items.size} of ${num} remaining tweets`);
             previousHeight = await page.evaluate('document.body.scrollHeight');
             await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
             await page.waitForFunction(`document.body.scrollHeight > ${previousHeight}`, {timeout: 3000});
-            await page.waitFor(500);
+            await page.waitForTimeout(500);
         }
         return items;
     }
@@ -93,8 +93,8 @@ function scrape(url, num, name){
                 else request.continue();
             });
             await page.goto(url);
-            await page.waitFor('main', {timeout: 7000});
-            await page.waitFor(2000);
+            await page.waitForSelector('main', {timeout: 7000});
+            await page.waitForTimeout(2000);
             let data = await infiniteScroll(page, num, name);
             browser.close();
             resolve(data);
@@ -119,7 +119,7 @@ function scrape(url, num, name){
     let dateString = '';
     let noRepliesString = '%20-filter%3Areplies';
     let remainingTweets = number;
-    let limitCounter = 0;
+    let repeatCounter = 0;
     if(number > 0){
         do{
             if(noReplies){
@@ -138,25 +138,26 @@ function scrape(url, num, name){
             remainingTweets = number - data.size;
             if(sizeBefore === data.size){
                 remainingTweets += 200; //to avoid looping over the same tweets
-                limitCounter++;
+                repeatCounter++;
             }
             else{
-                limitCounter = 0;
+                repeatCounter = 0;
             }
-            if(limitCounter > 2){
+            if(repeatCounter > 2){
                 console.log('Could not find more tweets, saving...');
                 break;
             }
         } while(data.size < number);
-        let numOfScraped = data.size;
+
+        // let numOfScraped = data.size;
         data = data.toArray();
-        let numToDelete = data.length - number;
-        if(numToDelete > 0){
-            for(let i=0;i<numToDelete;i++){
-                data.pop();
-            }
+
+        let numToDelete = Math.max(0, data.length - number);
+        for(let i=0;i<numToDelete;i++){
+            data.pop();
         }
-        console.log(`Tweets scraped: ${numOfScraped}`);
+
+        // console.log(`Tweets scraped: ${numOfScraped}`);
         console.log(`Total tweets: ${data.length}`);
         console.log('Saving...');
         fs.writeFileSync(filename, JSON.stringify([data, name]));
